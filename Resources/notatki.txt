@@ -1,0 +1,13 @@
+
+1. Jeśli nie wykrywa biblioteki Tessaract:
+
+Tessaract EXE:
+https://github.com/UB-Mannheim/tesseract/wiki
+
+Terminal:
+pip install pytessaract
+pip install tessaract
+pip install tessaract-ocr
+
+Źródło:
+https://stackoverflow.com/questions/50951955/pytesseract-tesseractnotfound-error-tesseract-is-not-installed-or-its-not-i

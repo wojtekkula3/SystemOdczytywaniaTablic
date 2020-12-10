@@ -1,6 +1,9 @@
 import cv2
 import imutils as imutils
 import numpy as np
+import pytesseract
+from pytesseract import image_to_string
+pytesseract.pytesseract.tesseract_cmd = "Resources/Tesseract-OCR/tesseract.exe"
 import PySimpleGUI as sg
 import matplotlib.pyplot as plt
 from PIL import Image, ImageTk, ImageFilter
@@ -11,9 +14,94 @@ sg.theme('DarkAmber')
 negative = False
 gray = False
 
-# First the window layout in 2 columns
 
-file_list_column = [
+def detection(filename):
+    watch_cascade = cv2.CascadeClassifier('Resources/cascade.xml')
+    image = cv2.imread(filename)
+
+    def detectPlateRough(image_gray,resize_h = 720,en_scale =1.08 ,top_bottom_padding_rate = 0.05):
+            if top_bottom_padding_rate>0.2:
+                print("error:top_bottom_padding_rate > 0.2:",top_bottom_padding_rate)
+                exit(1)
+            height = image_gray.shape[0]
+            padding = int(height*top_bottom_padding_rate)
+            scale = image_gray.shape[1]/float(image_gray.shape[0])
+            image = cv2.resize(image_gray, (int(scale*resize_h), resize_h))
+            image_color_cropped = image[padding:resize_h-padding,0:image_gray.shape[1]]
+            image_gray = cv2.cvtColor(image_color_cropped,cv2.COLOR_RGB2GRAY)
+            watches = watch_cascade.detectMultiScale(image_gray, en_scale, 2, minSize=(36, 9),maxSize=(36*40, 80*40))
+            # watches = watch_cascade.detectMultiScale(image_gray, scaleFactor=1.05, minNeighbors=5, minSize = (40,40))
+
+            cropped_images = []
+            print("out")
+            for (x, y, w, h) in watches:
+                print("in")
+
+                #cv2.rectangle(image_color_cropped, (x, y), (x + w, y + h), (0, 0, 255), 1)
+
+                x -= w * 0.14
+                w += w * 0.28
+                y -= h * 0.15
+                h += h * 0.3
+
+                #cv2.rectangle(image_color_cropped, (int(x), int(y)), (int(x + w), int(y + h)), (0, 0, 255), 1)
+
+                cropped = cropImage(image_color_cropped, (int(x), int(y), int(w), int(h)))
+                cropped_images.append([cropped,[x, y+padding, w, h]])
+                # cv2.imshow("CimageShow", cropped)
+
+                gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)  # konwersja na czarno białe
+                imgResize = imutils.resize(gray, height=150)
+                thresh = cv2.threshold(imgResize, 100, 255, cv2.THRESH_BINARY)[1]  # wszystkie wartości powyżej 127 zamieniane na 255(biały)
+                # cv2.imshow("grey", thresh)
+                output = image_to_string(thresh, lang='eng', config='--psm 7 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPRSTQWYZ ')
+                print('Output: ', output)
+                out = "Numery rejestracyjne pojazdów: "+output
+                window["-SELECT_IMAGE_2-"].update(out)
+
+                # cv2.waitKey(0)
+                # plt.show()  # wyświetlanie obrazka
+
+                # cv2.waitKey(0)
+            return cropped_images
+
+    def cropImage(image,rect):
+            # cv2.imshow("imageShow", image)
+            # cv2.waitKey(0)
+            x, y, w, h = computeSafeRegion(image.shape,rect)
+            # cv2.imshow("imageShow", image[y:y+h,x:x+w])
+            # cv2.waitKey(0)
+            return image[y:y+h,x:x+w]
+
+
+    def computeSafeRegion(shape,bounding_rect):
+            top = bounding_rect[1] # y
+            bottom  = bounding_rect[1] + bounding_rect[3] # y +  h
+            left = bounding_rect[0] # x
+            right =   bounding_rect[0] + bounding_rect[2] # x +  w
+            min_top = 0
+            max_bottom = shape[0]
+            min_left = 0
+            max_right = shape[1]
+
+            #print(left,top,right,bottom)
+            #print(max_bottom,max_right)
+
+            if top < min_top:
+                top = min_top
+            if left < min_left:
+                left = min_left
+            if bottom > max_bottom:
+                bottom = max_bottom
+            if right > max_right:
+                right = max_right
+            return [left,top,right-left,bottom-top]
+
+    images = detectPlateRough(image,image.shape[0],top_bottom_padding_rate=0.1)
+
+# Podział okna na dwie kolumny
+
+left_column = [
     [
         sg.Text("Wybierz:"),
         sg.In(size=(30, 1), enable_events=True, key="-FOLDER-"),
@@ -38,26 +126,24 @@ file_list_column = [
 
 ]
 
-# For now will only show the name of the file that was chosen
-image_viewer_column = [
+right_column = [
     [sg.Text("Wybierz zdjęcie do analizy", key="-SELECT_IMAGE-")],
-#   [sg.Text(size=(40, 1), key="-TOUT-")],
     [sg.Image(size=(40, 20),key="-IMAGE-")],
-    [sg.Text(" ", size=(40, 5), font=("",15), key="-SELECT_IMAGE_2-")],
+    [sg.Text(" ", size=(50, 1), font=("",14), key="-SELECT_IMAGE_2-")],
 ]
 
-# ----- Full layout -----
+# ----- Wypełnienie układu okna -----
 layout = [
     [
-        sg.Column(file_list_column),
+        sg.Column(left_column),
         sg.VSeperator(),
-        sg.Column(image_viewer_column, element_justification='c'),
+        sg.Column(right_column, element_justification='c'),
     ]
 ]
 
 window = sg.Window("Program", layout)
 
-# Run the Event Loop
+# Włączenie pętli zdarzeń
 while True:
     event, values = window.read()
     if event == "Exit" or event == sg.WIN_CLOSED:
@@ -66,10 +152,10 @@ while True:
     if event == "-FOLDER-":
         try:
             filename = values["-FOLDER-"]
-#           window["-TOUT-"].update(filename)
             window["-IMAGE-"].update(filename=filename)
             window["-SELECT_IMAGE-"].update("")
-            window["-SELECT_IMAGE_2-"].update("Numer rejestracyjny pojazdu: ")
+            # Funkcja detekcji oraz OCR do znalezienia numeru rejestraci
+            detection(filename)
         except:
             pass
 
@@ -88,8 +174,8 @@ while True:
                         bluePixel = 255 - pixelColorVals[2];  # Negate blue pixel
                         # Modify the image with the inverted pixel values
                         img.putpixel((i, j), (redPixel, greenPixel, bluePixel));
-                img.save("negatyw.PNG")  # write out the image as .png
-                window["-IMAGE-"].update(filename="negatyw.PNG")
+                img.save("Resources/Results/negatyw.PNG")  # write out the image as .png
+                window["-IMAGE-"].update(filename="Resources/Results/negatyw.PNG")
             else:
                 window["-IMAGE-"].update(filename=filename)
                 negative = False
@@ -101,11 +187,9 @@ while True:
             if(gray!=True):
                 gray = True
                 image = cv2.imread(filename)
-                print(image)
                 img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                print(img_gray)
-                cv2.imwrite("skala_szarosci.PNG", img_gray) # write out the image as .png
-                window["-IMAGE-"].update(filename="skala_szarosci.PNG")
+                cv2.imwrite("Resources/Results/skala_szarosci.PNG", img_gray) # write out the image as .png
+                window["-IMAGE-"].update(filename="Resources/Results/skala_szarosci.PNG")
             else:
                 window["-IMAGE-"].update(filename=filename)
                 gray = False
@@ -114,7 +198,6 @@ while True:
 
     if event == "-NORMALIZACJA_HISTOGRAMU-":
         window["-IMAGE-"].update(filename=filename)
-
         try:
             img = cv2.imread(filename)
             plt.figure("Histogram")
@@ -138,8 +221,87 @@ while True:
         except:
             pass
 
-
 window.close()
+
+
+
+# Działajaca detekcja
+# watch_cascade = cv2.CascadeClassifier('Resources/cascade.xml')
+# image = cv2.imread("Resources/car2.png")
+#
+# def detectPlateRough(image_gray,resize_h = 720,en_scale =1.08 ,top_bottom_padding_rate = 0.05):
+#         if top_bottom_padding_rate>0.2:
+#             print("error:top_bottom_padding_rate > 0.2:",top_bottom_padding_rate)
+#             exit(1)
+#         height = image_gray.shape[0]
+#         padding = int(height*top_bottom_padding_rate)
+#         scale = image_gray.shape[1]/float(image_gray.shape[0])
+#         image = cv2.resize(image_gray, (int(scale*resize_h), resize_h))
+#         image_color_cropped = image[padding:resize_h-padding,0:image_gray.shape[1]]
+#         image_gray = cv2.cvtColor(image_color_cropped,cv2.COLOR_RGB2GRAY)
+#         watches = watch_cascade.detectMultiScale(image_gray, en_scale, 2, minSize=(36, 9),maxSize=(36*40, 9*40))
+#         cropped_images = []
+#         for (x, y, w, h) in watches:
+#
+#             #cv2.rectangle(image_color_cropped, (x, y), (x + w, y + h), (0, 0, 255), 1)
+#
+#             x -= w * 0.14
+#             w += w * 0.28
+#             y -= h * 0.15
+#             h += h * 0.3
+#
+#             #cv2.rectangle(image_color_cropped, (int(x), int(y)), (int(x + w), int(y + h)), (0, 0, 255), 1)
+#
+#             cropped = cropImage(image_color_cropped, (int(x), int(y), int(w), int(h)))
+#             cropped_images.append([cropped,[x, y+padding, w, h]])
+#             # cv2.imshow("CimageShow", cropped)
+#
+#             gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)  # konwersja na czarno białe
+#             imgResize = imutils.resize(gray, height=150)
+#             thresh = cv2.threshold(imgResize, 100, 255, cv2.THRESH_BINARY)[1]  # wszystkie wartości powyżej 127 zamieniane na 255(biały)
+#             cv2.imshow("grey", thresh)
+#             output = image_to_string(thresh, lang='eng', config='--psm 7 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPRSTQWYZ')
+#             print('Output: ', output)
+#             cv2.waitKey(0)
+#             # plt.show()  # wyświetlanie obrazka
+#
+#             # cv2.waitKey(0)
+#         return cropped_images
+#
+# def cropImage(image,rect):
+#         cv2.imshow("imageShow", image)
+#         cv2.waitKey(0)
+#         x, y, w, h = computeSafeRegion(image.shape,rect)
+#         cv2.imshow("imageShow", image[y:y+h,x:x+w])
+#         cv2.waitKey(0)
+#         return image[y:y+h,x:x+w]
+#
+#
+# def computeSafeRegion(shape,bounding_rect):
+#         top = bounding_rect[1] # y
+#         bottom  = bounding_rect[1] + bounding_rect[3] # y +  h
+#         left = bounding_rect[0] # x
+#         right =   bounding_rect[0] + bounding_rect[2] # x +  w
+#         min_top = 0
+#         max_bottom = shape[0]
+#         min_left = 0
+#         max_right = shape[1]
+#
+#         #print(left,top,right,bottom)
+#         #print(max_bottom,max_right)
+#
+#         if top < min_top:
+#             top = min_top
+#         if left < min_left:
+#             left = min_left
+#         if bottom > max_bottom:
+#             bottom = max_bottom
+#         if right > max_right:
+#             right = max_right
+#         return [left,top,right-left,bottom-top]
+#
+# images = detectPlateRough(image,image.shape[0],top_bottom_padding_rate=0.1)
+
 
 
 
