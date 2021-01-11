@@ -2,6 +2,7 @@ import cv2
 import imutils as imutils
 import numpy as np
 import pytesseract
+from skimage import img_as_bool, color, morphology
 from pytesseract import image_to_string
 pytesseract.pytesseract.tesseract_cmd = "Resources/Tesseract-OCR/tesseract.exe"
 import PySimpleGUI as sg
@@ -13,6 +14,7 @@ import os.path
 sg.theme('DarkAmber')
 negative = False
 gray = False
+tresholding = False  # progowanie
 
 
 def detection(filename):
@@ -111,31 +113,40 @@ left_column = [
     [sg.Button('Negatyw Obrazu', key="-NEGATYW-")],
     [sg.Button('Konwersja do odcieni szarości', key="-ODCIENIE_SZAROSCI-")],
     [sg.Button('Normalizacja histogramu', key="-NORMALIZACJA_HISTOGRAMU-")],
-    [sg.Button('? Skalowanie')],
-    [sg.Button('Progowanie (binaryzacja)')],
+    [sg.Button('Progowanie (binaryzacja)', key="-PROGOWANIE-")],
     [sg.Button('? Filtry (3 do wyboru)')],
-    [sg.Button('Transformacja między przestrzeniami barw')],
-    [sg.Button('Obrót')],
-    [sg.Button('Zmiana jasności')],
+    [sg.Button('RGB -> HSV', key="-RGB_to_HSV-"), sg.Button('HSV -> RGB', key="-HSV_to_RBG-")],
     [sg.Button('Detekcja krawędzi')],
     [sg.Button('Segmentacja (3 metody)')],
-    [sg.Button('Szkieletyzacja')],
+    [sg.Button('Szkieletyzacja', key="-SKELETONIZATION-")],
     [sg.Button('Erozja/Dylatacja')],
-    [sg.Button('Implementacja algorytmu OCR')],
     [sg.Button('Klasyfikator cech')]
 
 ]
 
-right_column = [
+center_column = [
     [sg.Text("Wybierz zdjęcie do analizy", key="-SELECT_IMAGE-")],
     [sg.Image(size=(40, 20),key="-IMAGE-")],
     [sg.Text(" ", size=(50, 1), font=("",14), key="-SELECT_IMAGE_2-")],
+]
+
+right_column = [
+    [sg.Text("OPCJE", key="-OPTIONS_TEXT-", font=("",12))],
+    [sg.HSeparator()],
+    [sg.Button('Obróc w lewo', key="-ROTATE_LEFT-"), sg.Button('Obróc w prawo', key="-ROTATE_RIGHT-")],
+    [sg.Button('Pomniejsz ', key="-REDUCE_SIZE-"), sg.Button('Powiększ', key="-INCREASE_SIZE-")],
+    [sg.Text('Jasność:'), sg.Button('+', key="-ADD_BRIGHTNESS-"), sg.Button('-', key="-UNDO_BRIGHTNESS-")],
+    #[sg.Slider((1,100), key='_SLIDER_', orientation='h', enable_events=True, disable_number_display=True),
+    #        sg.T('     ', key='_RIGHT_')],
+
 ]
 
 # ----- Wypełnienie układu okna -----
 layout = [
     [
         sg.Column(left_column),
+        sg.VSeperator(),
+        sg.Column(center_column, element_justification='c'),
         sg.VSeperator(),
         sg.Column(right_column, element_justification='c'),
     ]
@@ -152,6 +163,9 @@ while True:
     if event == "-FOLDER-":
         try:
             filename = values["-FOLDER-"]
+            originalFile = Image.open(filename)
+            work_filename="Resources/Results/plik_roboczy.PNG"
+            originalFile.save(work_filename)
             window["-IMAGE-"].update(filename=filename)
             window["-SELECT_IMAGE-"].update("")
             # Funkcja detekcji oraz OCR do znalezienia numeru rejestraci
@@ -163,7 +177,7 @@ while True:
         try:
             if(negative!=True):
                 negative = True
-                img = Image.open(filename)
+                img = Image.open(work_filename)
                 for i in range(0, img.size[0] - 1):
                     for j in range(0, img.size[1] - 1):
                         # Get pixel value at (x,y) position of the image
@@ -177,7 +191,7 @@ while True:
                 img.save("Resources/Results/negatyw.PNG")  # write out the image as .png
                 window["-IMAGE-"].update(filename="Resources/Results/negatyw.PNG")
             else:
-                window["-IMAGE-"].update(filename=filename)
+                window["-IMAGE-"].update(filename=work_filename)
                 negative = False
         except:
             pass
@@ -186,12 +200,12 @@ while True:
         try:
             if(gray!=True):
                 gray = True
-                image = cv2.imread(filename)
+                image = cv2.imread(work_filename)
                 img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 cv2.imwrite("Resources/Results/skala_szarosci.PNG", img_gray) # write out the image as .png
                 window["-IMAGE-"].update(filename="Resources/Results/skala_szarosci.PNG")
             else:
-                window["-IMAGE-"].update(filename=filename)
+                window["-IMAGE-"].update(filename=work_filename)
                 gray = False
         except:
             pass
@@ -220,6 +234,117 @@ while True:
             cv2.waitKey(0)
         except:
             pass
+
+    if event=="-PROGOWANIE-":
+        try:
+            if(tresholding!=True):
+                tresholding = True
+                image = cv2.imread(work_filename, 1)
+                img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                ret, img_bin1 = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY)
+                cv2.imwrite("Resources/Results/progowanie.PNG", img_bin1) # write out the image as .png
+                window["-IMAGE-"].update(filename="Resources/Results/progowanie.PNG")
+            else:
+                window["-IMAGE-"].update(filename=work_filename)
+                tresholding = False
+        except:
+            pass
+
+    if event=="-ROTATE_LEFT-":
+        try:
+            image = Image.open(work_filename)
+            # rotated = image.rotate(45, expand=False)
+            transposed = image.transpose(Image.ROTATE_90)
+            transposed.save(work_filename)
+            window["-IMAGE-"].update(filename=work_filename)
+        except:
+            pass
+
+    if event=="-ROTATE_RIGHT-":
+        try:
+            image = Image.open(work_filename)
+            # rotated = image.rotate(45, expand=False)
+            transposed = image.transpose(Image.ROTATE_270)
+            transposed.save(work_filename)
+            window["-IMAGE-"].update(filename=work_filename)
+        except:
+            pass
+
+    if event=="-REDUCE_SIZE-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            image_resized = cv2.resize(image, None, fx=0.5, fy=0.5)
+            cv2.imwrite(work_filename, image_resized)
+            window["-IMAGE-"].update(filename=work_filename)
+        except:
+            pass
+
+    if event=="-INCREASE_SIZE-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            height, width = image.shape[:2]
+            image_resized = cv2.resize(image, (2 * width, 2 * height), interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite(work_filename, image_resized)
+            window["-IMAGE-"].update(filename=work_filename)
+        except:
+            pass
+
+    if event=="-RGB_to_HSV-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            cv2.imwrite(work_filename, image_hsv)
+            window["-IMAGE-"].update(filename=work_filename)
+        except:
+            pass
+
+    if event=="-HSV_to_RBG-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+            cv2.imwrite(work_filename, image_rgb)
+            window["-IMAGE-"].update(filename=work_filename)
+        except:
+            pass
+
+    if event=="-SKELETONIZATION-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            image = color.rgb2gray(image)
+            image = img_as_bool(image)
+            image1 = morphology.medial_axis(image)
+            f, (ax0, ax1) = plt.subplots(1, 2)
+            ax0.imshow(image, cmap='gray', interpolation='nearest')
+            ax1.imshow(image1, cmap='gray', interpolation='nearest')
+            plt.show()
+        except:
+            pass
+
+    if event=="-ADD_BRIGHTNESS-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            increase = 10
+            v = hsv[:, :, 2]
+            v = np.where(v <= 255 - increase, v + increase, 255)
+            hsv[:, :, 2] = v
+            image = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            cv2.imwrite(work_filename, image)
+            window['-IMAGE-'].update(filename=work_filename)
+        except:
+            pass
+
+    if event=="-UNDO_BRIGHTNESS-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            hsv[...,2] = hsv[...,2]*0.5
+            image = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            cv2.imwrite(work_filename, image)
+            window['-IMAGE-'].update(filename=work_filename)
+        except:
+            pass
+
 
 window.close()
 
