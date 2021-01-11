@@ -114,12 +114,12 @@ left_column = [
     [sg.Button('Konwersja do odcieni szarości', key="-ODCIENIE_SZAROSCI-")],
     [sg.Button('Normalizacja histogramu', key="-NORMALIZACJA_HISTOGRAMU-")],
     [sg.Button('Progowanie (binaryzacja)', key="-PROGOWANIE-")],
-    [sg.Button('? Filtry (3 do wyboru)')],
+    [sg.Button('Filtry', key='-FILTERS-')], # Rozmycie Gaussa, Filtr Medianowy, Filtr wyostrzający
     [sg.Button('RGB -> HSV', key="-RGB_to_HSV-"), sg.Button('HSV -> RGB', key="-HSV_to_RBG-")],
     [sg.Button('Detekcja krawędzi')],
     [sg.Button('Segmentacja (3 metody)')],
     [sg.Button('Szkieletyzacja', key="-SKELETONIZATION-")],
-    [sg.Button('Erozja/Dylatacja')],
+    [sg.Button('Erozja i Dylatacja', key="-EROSION_DILATATION-")],
     [sg.Button('Klasyfikator cech')]
 
 ]
@@ -250,6 +250,22 @@ while True:
         except:
             pass
 
+    if event == "-FILTERS-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            image = cv2.resize(image, (450, 400), None, .25, .25)
+
+            gaussianBlurKernel = np.array(([[1, 2, 1], [2, 4, 2], [1, 2, 1]]), np.float32)/9
+            sharpenKernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+            meanBlurKernel = np.ones((3, 3), np.float32)/9
+            gaussianBlur = cv2.filter2D(src=image, kernel=gaussianBlurKernel, ddepth=-1)
+            meanBlur = cv2.filter2D(src=image, kernel=meanBlurKernel, ddepth=-1)
+            sharpen = cv2.filter2D(src=image, kernel=sharpenKernel, ddepth=-1)
+            horizontalStack = np.concatenate((gaussianBlur, meanBlur, sharpen), axis=1)
+            cv2.imshow("Filtr Gaussa, Filtr Medianowy, Filtr Wyostrzajacy", horizontalStack)
+        except:
+            pass
+
     if event=="-ROTATE_LEFT-":
         try:
             image = Image.open(work_filename)
@@ -345,6 +361,16 @@ while True:
         except:
             pass
 
+    if event=="-EROSION_DILATATION-":
+        try:
+            image = cv2.imread(work_filename, 1)
+            kernel = np.ones((5, 5), np.uint8)
+            image_erosion = cv2.erode(image, kernel, iterations=1)
+            image_dilation = cv2.dilate(image, kernel, iterations=1)
+            cv2.imshow('Erozja', image_erosion)
+            cv2.imshow('Dylatacja', image_dilation)
+        except:
+            pass
 
 window.close()
 
