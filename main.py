@@ -15,6 +15,8 @@ sg.theme('DarkAmber')
 negative = False
 gray = False
 tresholding = False  # progowanie
+filename = ''
+
 
 
 def detection(filename):
@@ -116,11 +118,12 @@ left_column = [
     [sg.Button('Progowanie (binaryzacja)', key="-PROGOWANIE-")],
     [sg.Button('Filtry', key='-FILTERS-')], # Rozmycie Gaussa, Filtr Medianowy, Filtr wyostrzający
     [sg.Button('RGB -> HSV', key="-RGB_to_HSV-"), sg.Button('HSV -> RGB', key="-HSV_to_RBG-")],
-    [sg.Button('Detekcja krawędzi')],
-    [sg.Button('Segmentacja (3 metody)')],
+    [sg.Button('Detekcja krawędzi', key="-EDGE_DETECTION-")],
+    [sg.Button('Segmentacja', key="-SEGMENTATION-")],
     [sg.Button('Szkieletyzacja', key="-SKELETONIZATION-")],
     [sg.Button('Erozja i Dylatacja', key="-EROSION_DILATATION-")],
-    [sg.Button('Klasyfikator cech')]
+    [sg.Button('Klasyfikator cech')],
+    [sg.Button('Reset',size=(25,1), key="-RESET-")]
 
 ]
 
@@ -211,16 +214,16 @@ while True:
             pass
 
     if event == "-NORMALIZACJA_HISTOGRAMU-":
-        window["-IMAGE-"].update(filename=filename)
+        # window["-IMAGE-"].update(filename=filename)
         try:
-            img = cv2.imread(filename)
+            img = cv2.imread(work_filename)
             plt.figure("Histogram")
             plt.hist(img.flatten(), 256, [0, 256], color='r')
             plt.xlim([0, 256])
             plt.title("Histogram")
             plt.legend(('histogram',), loc='upper right')
 
-            img = cv2.imread(filename, 0)
+            img = cv2.imread(work_filename, 0)
             plt.figure("Znormalizowany histogram")
             img_normalized = cv2.equalizeHist(img)
             plt.hist(img_normalized.flatten(), 256, [0, 256], color='r')
@@ -291,6 +294,7 @@ while True:
             image = cv2.imread(work_filename, 1)
             image_resized = cv2.resize(image, None, fx=0.5, fy=0.5)
             cv2.imwrite(work_filename, image_resized)
+            # image_resized.save(work_filename)
             window["-IMAGE-"].update(filename=work_filename)
         except:
             pass
@@ -301,6 +305,7 @@ while True:
             height, width = image.shape[:2]
             image_resized = cv2.resize(image, (2 * width, 2 * height), interpolation=cv2.INTER_CUBIC)
             cv2.imwrite(work_filename, image_resized)
+
             window["-IMAGE-"].update(filename=work_filename)
         except:
             pass
@@ -323,15 +328,59 @@ while True:
         except:
             pass
 
+    if event=="-EDGE_DETECTION-":
+        try:
+            image = cv2.imread(work_filename, 0)
+            edges = cv2.Canny(image, 100, 200)
+            plt.subplot(121), plt.imshow(image, cmap='gray')
+            plt.title('Oryginał'), plt.xticks([]), plt.yticks([])
+            plt.subplot(122), plt.imshow(edges, cmap='gray')
+            plt.title('Wykrycie krawędzi'), plt.xticks([]), plt.yticks([])
+            plt.show()
+        except:
+            pass
+
+    if event=="-SEGMENTATION-":
+        try:
+            img = cv2.imread(work_filename)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+            # noise removal
+            kernel = np.ones((3, 3), np.uint8)
+            opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+            # sure background area
+            sure_bg = cv2.dilate(opening, kernel, iterations=3)
+            # Finding sure foreground area
+            dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
+            ret, sure_fg = cv2.threshold(dist_transform, 0.7 * dist_transform.max(), 255, 0)
+            # Finding unknown region
+            sure_fg = np.uint8(sure_fg)
+            unknown = cv2.subtract(sure_bg, sure_fg)
+
+            # Marker labelling
+            ret, markers = cv2.connectedComponents(sure_fg)
+            # Add one to all labels so that sure background is not 0, but 1
+            markers = markers + 1
+            # Now, mark the region of unknown with zero
+            markers[unknown == 255] = 0
+
+            markers = cv2.watershed(img, markers)
+            img[markers == -1] = [255, 0, 0]
+            cv2.imshow(markers)
+        except:
+            pass
+
     if event=="-SKELETONIZATION-":
         try:
             image = cv2.imread(work_filename, 1)
             image = color.rgb2gray(image)
             image = img_as_bool(image)
             image1 = morphology.medial_axis(image)
-            f, (ax0, ax1) = plt.subplots(1, 2)
-            ax0.imshow(image, cmap='gray', interpolation='nearest')
-            ax1.imshow(image1, cmap='gray', interpolation='nearest')
+            plt.subplot(121), plt.imshow(image, cmap='gray', interpolation='nearest')
+            plt.title('Format bool'), plt.xticks([]), plt.yticks([])
+            plt.subplot(122), plt.imshow(image1, cmap='gray', interpolation='nearest')
+            plt.title('Szkieletyzacja'), plt.xticks([]), plt.yticks([])
             plt.show()
         except:
             pass
@@ -369,6 +418,15 @@ while True:
             image_dilation = cv2.dilate(image, kernel, iterations=1)
             cv2.imshow('Erozja', image_erosion)
             cv2.imshow('Dylatacja', image_dilation)
+        except:
+            pass
+
+    if event=="-RESET-":
+        try:
+            filename = values["-FOLDER-"]
+            originalFile = Image.open(filename)
+            originalFile.save(work_filename)
+            window["-IMAGE-"].update(filename=filename)
         except:
             pass
 
