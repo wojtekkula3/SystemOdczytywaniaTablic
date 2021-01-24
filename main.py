@@ -1,4 +1,5 @@
 import cv2
+import os
 import imutils as imutils
 import numpy as np
 import pytesseract
@@ -33,15 +34,16 @@ def detection(filename):
             image = cv2.resize(image_gray, (int(scale*resize_h), resize_h))
             image_color_cropped = image[padding:resize_h-padding,0:image_gray.shape[1]]
             image_gray = cv2.cvtColor(image_color_cropped,cv2.COLOR_RGB2GRAY)
-            watches = watch_cascade.detectMultiScale(image_gray, en_scale, 2, minSize=(36, 9),maxSize=(36*40, 80*40))
+            watches = watch_cascade.detectMultiScale(image_gray, en_scale, minSize=(36, 9),maxSize=(36*40, 80*40))
             # watches = watch_cascade.detectMultiScale(image_gray, scaleFactor=1.05, minNeighbors=5, minSize = (40,40))
 
             cropped_images = []
-            print("out")
-            for (x, y, w, h) in watches:
-                print("in")
+            plate_numbers= []
+            plate_numbers_string = "Numery rejestracyjne: "
 
-                #cv2.rectangle(image_color_cropped, (x, y), (x + w, y + h), (0, 0, 255), 1)
+            for (x, y, w, h) in watches:
+
+                # cv2.rectangle(image_color_cropped, (x, y), (x + w, y + h), (0, 0, 255), 1)
 
                 x -= w * 0.14
                 w += w * 0.28
@@ -52,29 +54,29 @@ def detection(filename):
 
                 cropped = cropImage(image_color_cropped, (int(x), int(y), int(w), int(h)))
                 cropped_images.append([cropped,[x, y+padding, w, h]])
-                # cv2.imshow("CimageShow", cropped)
 
-                gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)  # konwersja na czarno białe
+                gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
                 imgResize = imutils.resize(gray, height=150)
-                thresh = cv2.threshold(imgResize, 100, 255, cv2.THRESH_BINARY)[1]  # wszystkie wartości powyżej 127 zamieniane na 255(biały)
+                thresh = cv2.threshold(imgResize, 100, 255, cv2.THRESH_BINARY)[1]  # wszystkie wartości powyżej 100 zamieniane na 255(biały)
                 # cv2.imshow("grey", thresh)
                 output = image_to_string(thresh, lang='eng', config='--psm 7 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPRSTQWYZ ')
-                print('Output: ', output)
-                out = "Numery rejestracyjne pojazdów: "+output
-                window["-SELECT_IMAGE_2-"].update(out)
+                plate_numbers.append(output)
 
-                # cv2.waitKey(0)
-                # plt.show()  # wyświetlanie obrazka
+            if len(plate_numbers) == 0:
+                plate_numbers_string = plate_numbers_string + "(nie wykryto tablic rejestracyjnych)"
+            else:
+                for plate in plate_numbers:
+                    plate_numbers_string = plate_numbers_string + plate + ", "
 
-                # cv2.waitKey(0)
+            plate_numbers_string.replace("\n", " ")
+            plate_numbers_string.replace("\\n", " ")
+            print(plate_numbers_string)
+            window["-SELECT_IMAGE_2-"].update(plate_numbers_string)
+
             return cropped_images
 
     def cropImage(image,rect):
-            # cv2.imshow("imageShow", image)
-            # cv2.waitKey(0)
             x, y, w, h = computeSafeRegion(image.shape,rect)
-            # cv2.imshow("imageShow", image[y:y+h,x:x+w])
-            # cv2.waitKey(0)
             return image[y:y+h,x:x+w]
 
 
@@ -101,7 +103,9 @@ def detection(filename):
                 right = max_right
             return [left,top,right-left,bottom-top]
 
+    images = []
     images = detectPlateRough(image,image.shape[0],top_bottom_padding_rate=0.1)
+    print("Number of license plates detected", len(images))
 
 # Podział okna na dwie kolumny
 
@@ -122,7 +126,6 @@ left_column = [
     [sg.Button('Segmentacja', key="-SEGMENTATION-")],
     [sg.Button('Szkieletyzacja', key="-SKELETONIZATION-")],
     [sg.Button('Erozja i Dylatacja', key="-EROSION_DILATATION-")],
-    [sg.Button('Klasyfikator cech')],
     [sg.Button('Reset',size=(25,1), key="-RESET-")]
 
 ]
@@ -130,14 +133,14 @@ left_column = [
 center_column = [
     [sg.Text("Wybierz zdjęcie do analizy", key="-SELECT_IMAGE-")],
     [sg.Image(size=(40, 20),key="-IMAGE-")],
-    [sg.Text(" ", size=(50, 1), font=("",14), key="-SELECT_IMAGE_2-")],
+    [sg.Text(" ", size=(50, 3), font=("",14), key="-SELECT_IMAGE_2-")],
 ]
 
 right_column = [
     [sg.Text("OPCJE", key="-OPTIONS_TEXT-", font=("",12))],
     [sg.HSeparator()],
-    [sg.Button('Obróc w lewo', key="-ROTATE_LEFT-"), sg.Button('Obróc w prawo', key="-ROTATE_RIGHT-")],
-    [sg.Button('Pomniejsz ', key="-REDUCE_SIZE-"), sg.Button('Powiększ', key="-INCREASE_SIZE-")],
+    [sg.Button('Obróć w lewo', key="-ROTATE_LEFT-"), sg.Button('Obróć w prawo', key="-ROTATE_RIGHT-")],
+    [sg.Button('Zmniejsz', key="-REDUCE_SIZE-"), sg.Button('Powiększ', key="-INCREASE_SIZE-")],
     [sg.Text('Jasność:'), sg.Button('+', key="-ADD_BRIGHTNESS-"), sg.Button('-', key="-UNDO_BRIGHTNESS-")],
     #[sg.Slider((1,100), key='_SLIDER_', orientation='h', enable_events=True, disable_number_display=True),
     #        sg.T('     ', key='_RIGHT_')],
@@ -161,8 +164,12 @@ window = sg.Window("Program", layout)
 while True:
     event, values = window.read()
     if event == "Exit" or event == sg.WIN_CLOSED:
+        os.remove("Resources/Results/plik_roboczy.PNG")
+        os.remove("Resources/Results/negatyw.PNG")
+        os.remove("Resources/Results/progowanie.PNG")
+        os.remove("Resources/Results/skala_szarosci.PNG")
         break
-    # Folder name was filled in, make a list of files in the folder
+
     if event == "-FOLDER-":
         try:
             filename = values["-FOLDER-"]
@@ -171,7 +178,8 @@ while True:
             originalFile.save(work_filename)
             window["-IMAGE-"].update(filename=filename)
             window["-SELECT_IMAGE-"].update("")
-            # Funkcja detekcji oraz OCR do znalezienia numeru rejestraci
+
+            # Funkcja detekcji oraz OCR do znalezienia numeru rejestracyjnego
             detection(filename)
         except:
             pass
@@ -191,7 +199,7 @@ while True:
                         bluePixel = 255 - pixelColorVals[2];  # Negate blue pixel
                         # Modify the image with the inverted pixel values
                         img.putpixel((i, j), (redPixel, greenPixel, bluePixel));
-                img.save("Resources/Results/negatyw.PNG")  # write out the image as .png
+                img.save("Resources/Results/negatyw.PNG")
                 window["-IMAGE-"].update(filename="Resources/Results/negatyw.PNG")
             else:
                 window["-IMAGE-"].update(filename=work_filename)
@@ -205,7 +213,7 @@ while True:
                 gray = True
                 image = cv2.imread(work_filename)
                 img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                cv2.imwrite("Resources/Results/skala_szarosci.PNG", img_gray) # write out the image as .png
+                cv2.imwrite("Resources/Results/skala_szarosci.PNG", img_gray)
                 window["-IMAGE-"].update(filename="Resources/Results/skala_szarosci.PNG")
             else:
                 window["-IMAGE-"].update(filename=work_filename)
@@ -245,7 +253,7 @@ while True:
                 image = cv2.imread(work_filename, 1)
                 img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 ret, img_bin1 = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY)
-                cv2.imwrite("Resources/Results/progowanie.PNG", img_bin1) # write out the image as .png
+                cv2.imwrite("Resources/Results/progowanie.PNG", img_bin1)
                 window["-IMAGE-"].update(filename="Resources/Results/progowanie.PNG")
             else:
                 window["-IMAGE-"].update(filename=work_filename)
