@@ -4,6 +4,7 @@ import imutils as imutils
 import numpy as np
 import pytesseract
 from skimage import img_as_bool, color, morphology
+from skimage.morphology import skeletonize
 from pytesseract import image_to_string
 pytesseract.pytesseract.tesseract_cmd = "Resources/Tesseract-OCR/tesseract.exe"
 import PySimpleGUI as sg
@@ -19,12 +20,11 @@ tresholding = False  # progowanie
 filename = ''
 
 
-
 def detection(filename):
     watch_cascade = cv2.CascadeClassifier('Resources/cascade.xml')
     image = cv2.imread(filename)
 
-    def detectPlateRough(image_gray,resize_h = 720,en_scale =1.08 ,top_bottom_padding_rate = 0.05):
+    def detectPlateRough(image_gray,resize_h = 720,top_bottom_padding_rate = 0.05):
             if top_bottom_padding_rate>0.2:
                 print("error:top_bottom_padding_rate > 0.2:",top_bottom_padding_rate)
                 exit(1)
@@ -32,9 +32,10 @@ def detection(filename):
             padding = int(height*top_bottom_padding_rate)
             scale = image_gray.shape[1]/float(image_gray.shape[0])
             image = cv2.resize(image_gray, (int(scale*resize_h), resize_h))
+            #cv2.imshow('resized',image)
             image_color_cropped = image[padding:resize_h-padding,0:image_gray.shape[1]]
             image_gray = cv2.cvtColor(image_color_cropped,cv2.COLOR_RGB2GRAY)
-            watches = watch_cascade.detectMultiScale(image_gray, en_scale, minSize=(36, 9),maxSize=(36*40, 80*40))
+            watches = watch_cascade.detectMultiScale(image_gray, scaleFactor=1.08, minSize=(36, 9),maxSize=(36*40, 80*40))
             # watches = watch_cascade.detectMultiScale(image_gray, scaleFactor=1.05, minNeighbors=5, minSize = (40,40))
 
             cropped_images = []
@@ -54,11 +55,9 @@ def detection(filename):
 
                 cropped = cropImage(image_color_cropped, (int(x), int(y), int(w), int(h)))
                 cropped_images.append([cropped,[x, y+padding, w, h]])
-
                 gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
                 imgResize = imutils.resize(gray, height=150)
                 thresh = cv2.threshold(imgResize, 100, 255, cv2.THRESH_BINARY)[1]  # wszystkie wartości powyżej 100 zamieniane na 255(biały)
-                # cv2.imshow("grey", thresh)
                 output = image_to_string(thresh, lang='eng', config='--psm 7 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPRSTQWYZ ')
                 plate_numbers.append(output)
 
@@ -164,10 +163,14 @@ window = sg.Window("Program", layout)
 while True:
     event, values = window.read()
     if event == "Exit" or event == sg.WIN_CLOSED:
-        os.remove("Resources/Results/plik_roboczy.PNG")
-        os.remove("Resources/Results/negatyw.PNG")
-        os.remove("Resources/Results/progowanie.PNG")
-        os.remove("Resources/Results/skala_szarosci.PNG")
+        if(os.path.exists("Resources/Results/plik_roboczy.PNG")):
+            os.remove("Resources/Results/plik_roboczy.PNG")
+        if (os.path.exists("Resources/Results/negatyw.PNG")):
+            os.remove("Resources/Results/negatyw.PNG")
+        if (os.path.exists("Resources/Results/progowanie.PNG")):
+            os.remove("Resources/Results/progowanie.PNG")
+        if (os.path.exists("Resources/Results/skala_szarosci.PNG")):
+            os.remove("Resources/Results/skala_szarosci.PNG")
         break
 
     if event == "-FOLDER-":
@@ -222,8 +225,8 @@ while True:
             pass
 
     if event == "-NORMALIZACJA_HISTOGRAMU-":
-        # window["-IMAGE-"].update(filename=filename)
         try:
+            #Histogram
             img = cv2.imread(work_filename)
             plt.figure("Histogram")
             plt.hist(img.flatten(), 256, [0, 256], color='r')
@@ -231,6 +234,7 @@ while True:
             plt.title("Histogram")
             plt.legend(('histogram',), loc='upper right')
 
+            # Znormalizowany Histogram
             img = cv2.imread(work_filename, 0)
             plt.figure("Znormalizowany histogram")
             img_normalized = cv2.equalizeHist(img)
@@ -280,7 +284,6 @@ while True:
     if event=="-ROTATE_LEFT-":
         try:
             image = Image.open(work_filename)
-            # rotated = image.rotate(45, expand=False)
             transposed = image.transpose(Image.ROTATE_90)
             transposed.save(work_filename)
             window["-IMAGE-"].update(filename=work_filename)
@@ -290,7 +293,6 @@ while True:
     if event=="-ROTATE_RIGHT-":
         try:
             image = Image.open(work_filename)
-            # rotated = image.rotate(45, expand=False)
             transposed = image.transpose(Image.ROTATE_270)
             transposed.save(work_filename)
             window["-IMAGE-"].update(filename=work_filename)
@@ -321,7 +323,7 @@ while True:
     if event=="-RGB_to_HSV-":
         try:
             image = cv2.imread(work_filename, 1)
-            image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            image_hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             cv2.imwrite(work_filename, image_hsv)
             window["-IMAGE-"].update(filename=work_filename)
         except:
@@ -330,7 +332,7 @@ while True:
     if event=="-HSV_to_RBG-":
         try:
             image = cv2.imread(work_filename, 1)
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_HSV2RGB)
             cv2.imwrite(work_filename, image_rgb)
             window["-IMAGE-"].update(filename=work_filename)
         except:
@@ -340,6 +342,7 @@ while True:
         try:
             image = cv2.imread(work_filename, 0)
             edges = cv2.Canny(image, 100, 200)
+            plt.figure(figsize=(10, 5))
             plt.subplot(121), plt.imshow(image, cmap='gray')
             plt.title('Oryginał'), plt.xticks([]), plt.yticks([])
             plt.subplot(122), plt.imshow(edges, cmap='gray')
@@ -351,31 +354,24 @@ while True:
     if event=="-SEGMENTATION-":
         try:
             img = cv2.imread(work_filename)
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            vectorized = img.reshape((-1, 3))
+            vectorized = np.float32(vectorized)
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
 
-            # noise removal
-            kernel = np.ones((3, 3), np.uint8)
-            opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-            # sure background area
-            sure_bg = cv2.dilate(opening, kernel, iterations=3)
-            # Finding sure foreground area
-            dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
-            ret, sure_fg = cv2.threshold(dist_transform, 0.7 * dist_transform.max(), 255, 0)
-            # Finding unknown region
-            sure_fg = np.uint8(sure_fg)
-            unknown = cv2.subtract(sure_bg, sure_fg)
-
-            # Marker labelling
-            ret, markers = cv2.connectedComponents(sure_fg)
-            # Add one to all labels so that sure background is not 0, but 1
-            markers = markers + 1
-            # Now, mark the region of unknown with zero
-            markers[unknown == 255] = 0
-
-            markers = cv2.watershed(img, markers)
-            img[markers == -1] = [255, 0, 0]
-            cv2.imshow(markers)
+            K = 3
+            attempts = 10
+            ret, label, center = cv2.kmeans(vectorized, K, None, criteria, attempts, cv2.KMEANS_PP_CENTERS)
+            center = np.uint8(center)
+            res = center[label.flatten()]
+            result_image = res.reshape((img.shape))
+            plt.figure(figsize=(10, 5))
+            plt.subplot(1, 2, 1), plt.imshow(img)
+            plt.title('Zdjęcie oryginalne'), plt.xticks([]), plt.yticks([])
+            plt.subplot(1, 2, 2), plt.imshow(result_image)
+            plt.title('Segmentacja zdjęcia K = %i' % K), plt.xticks([]), plt.yticks([])
+            plt.show()
+            window["-IMAGE-"].update(filename=work_filename)
         except:
             pass
 
@@ -384,10 +380,12 @@ while True:
             image = cv2.imread(work_filename, 1)
             image = color.rgb2gray(image)
             image = img_as_bool(image)
-            image1 = morphology.medial_axis(image)
+
+            image_skeletonized = skeletonize(image)
+            plt.figure(figsize=(10, 5))
             plt.subplot(121), plt.imshow(image, cmap='gray', interpolation='nearest')
             plt.title('Format bool'), plt.xticks([]), plt.yticks([])
-            plt.subplot(122), plt.imshow(image1, cmap='gray', interpolation='nearest')
+            plt.subplot(122), plt.imshow(image_skeletonized, cmap='gray', interpolation='nearest')
             plt.title('Szkieletyzacja'), plt.xticks([]), plt.yticks([])
             plt.show()
         except:
@@ -399,7 +397,7 @@ while True:
             hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
             increase = 10
             v = hsv[:, :, 2]
-            v = np.where(v <= 255 - increase, v + increase, 255)
+            v = np.where((255-v)<increase,255,v+increase)
             hsv[:, :, 2] = v
             image = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
             cv2.imwrite(work_filename, image)
